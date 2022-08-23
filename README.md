@@ -2,12 +2,6 @@
 Electronic supplement to 'Modeling postoperative mortality in older patients by boosting discrete-time competing risks models'
 
 ##############################################################################
-#####         Modeling postoperative mortality in older patients         ##### 
-#####          by boosting discrete-time competing risks models          #####
-##############################################################################
-#####                    Electronic Supplement                           #####
-#####                    Author: Moritz Berger                           #####
-##############################################################################
 #####			               Content: Instructions				                   ##### 
 ##############################################################################
 
