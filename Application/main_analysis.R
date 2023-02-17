@@ -22,7 +22,11 @@
 # in the paper. In particular, data lines in the anonymized data set do not 
 # refer to real individuals.
 
-
+### install packages 
+# install.packages("gamboostLSS")
+# install.packages("discSurv")
+# install.packages("VGAM")
+# install.packages("e1071")
 
 ### load packages
 library("gamboostLSS")
@@ -120,6 +124,7 @@ modf  <- vgam(formf, data=pose12_alteredL, family=multinomial(parallel=FALSE, re
 # Note: Depending on the system the following loop might take some time. The result is stored in "./Application/ci.rda"
 res_ci <- array(NA, dim=c(30,2,300))
 f_discharge <- matrix(NA, nrow=300, ncol=31)
+mod_list <- list()
 for(seed in 1:300){
   cat(seed)
   set.seed(seed+18052021)
@@ -136,14 +141,14 @@ for(seed in 1:300){
   }
   data_boot_long <- dataLongCompRisks(dataShort=data_boot, timeColumn="time30", eventColumns=c("death","discharge"), timeAsFactor=F)
   mod_boot       <- vgam(formf, data=data_boot_long, family=multinomial(parallel=FALSE, refLevel=1), constraints=clist)
+  mod_list[[seed]] <- mod_boot
   res_ci[,,seed] <- coef(mod_boot, matrix=T)
   fid <- data_boot$Study.Subject.ID[data_boot$time30==31][1]
   f_discharge[seed,] <- mod_boot@x[which(data_boot_long$Study.Subject.ID==fid)[1:31],2:10]%*%res_ci[2:10,2,seed]
 }
-
 #####
 
-# Table 1. The table presents the coefficient estimates and 95% confidence intervals obtained from fitting a 
+# Table 1. The table presents the coefficient estimates and 95% confidence intervals (based on 300 bootstrap samples) obtained from fitting a 
 # discrete cause-specific hazard model to the learning sample. 
 
 coeff <- coef(modf, matrix=T)
@@ -157,24 +162,23 @@ round(res2[-c(1:10),], 4) # Discharge
 
 #####
 
-# Figure 3. Time-dependent baseline coefficients for discharge alive obtained from fitting the discrete cause-specific hazard model 
-# to the learning sample of the POSE data.
+# Figure 3. Time-dependent baseline coefficients for discharge alive with pointwise 95% confidence intervals obtained from fitting the 
+# discrete cause-specific hazard model to the learning sample of the POSE data.
 
 time_discharge <- modf@x[which(pose12_alteredL$Study.Subject.ID=="090-007-062")[1:31],2:10]%*%res2[2:10,1]
 time_discharge_l <- apply(f_discharge, 2, quantile, probs=0.025)
 time_discharge_u <- apply(f_discharge, 2, quantile, probs=0.975)
 par(mar=c(5,5,1,1))
 plot(1:30, time_discharge[-31], type="s", ylim=c(-1.2,0.4), lwd=3, xlab="Days", ylab=bquote(f["0,discharge"]),
-     cex.axis=1.8, cex.lab=2, col=0)
-lines(1:30, time_discharge_l[-31], lty="solid", lwd=2.5, col="darkgrey", type="s")
-lines(1:30, time_discharge_u[-31], lty="solid", lwd=2.5, col="darkgrey", type="s")
-lines(1:30, time_discharge[-31], type="s", lwd=3)
+     cex.axis=1.8, cex.lab=2)
+polygon(c(1,rep(2:30,each=2),rep(30:2,each=2),1), c(rep(time_discharge_l[-31],each=2),rep(rev(time_discharge_u[-c(30,31)]),each=2)),
+        col =  adjustcolor("darkgrey", alpha.f = 0.3), border = NA)
 
 #####
 
-# Figure 4. The figure shows the estimated cumulative incidence functions for death (panels (a) and (c)) and 
-# discharge alive (panels (b) and (d)) referring to the covariates of a randomly selected patient 
-# (`elective' and `gynaecologic and urological' intervention, no transfusion of plasma, not frail, 
+# Figure 4. The figure shows the estimated cumulative incidence functions with pointwise 95% confidence bands 
+# for death (panels (a) and (c)) and discharge alive (panels (b) and (d)) referring to the covariates of a randomly 
+# selected patient (`elective' and `gynaecologic and urological' intervention, no transfusion of plasma, not frail, 
 # general anaesthesia technique, no premedication). Panels (a) and (b) refer to the frailty of the patient, 
 # panels (c) and (d) refer to different degrees of urgency of the intervention.
 
@@ -197,31 +201,72 @@ S_hat  <- t(apply(1-l_hats, 1, cumprod))
 F_hat1 <- t(sapply(1:n_test, function(j) cumsum(c(1,S_hat[j,1:(k-1)])*lambda1_pred[j,])))
 F_hat2 <- t(sapply(1:n_test, function(j) cumsum(c(1,S_hat[j,1:(k-1)])*lambda2_pred[j,])))
 
+F_hat1_ci <- array(NA, dim=c(n_test, k, 300))
+F_hat2_ci <- array(NA, dim=c(n_test, k, 300))
+for(i in 1:300){
+  lambda_hat_ci <- predict(mod_list[[i]], type="response", newdata=pose3_altered_pred)
+  lambda1_ci    <- matrix(lambda_hat_ci[,2], nrow=n_test, ncol=k, byrow=T)
+  lambda2_ci    <- matrix(lambda_hat_ci[,3], nrow=n_test, ncol=k, byrow=T)
+  l_hats_ci <- lambda1_ci+lambda2_ci
+  S_hat_ci  <- t(apply(1-l_hats_ci, 1, cumprod))
+  F_hat1_ci[,,i] <- t(sapply(1:n_test, function(j) cumsum(c(1,S_hat_ci[j,1:(k-1)])*lambda1_ci[j,])))
+  F_hat2_ci[,,i] <- t(sapply(1:n_test, function(j) cumsum(c(1,S_hat_ci[j,1:(k-1)])*lambda2_ci[j,])))
+}
+F_hat1_lb <- apply(F_hat1_ci, c(1,2), function(j) quantile(j, prob=0.025))
+F_hat1_ub <- apply(F_hat1_ci, c(1,2), function(j) quantile(j, prob=0.975))
+F_hat2_lb <- apply(F_hat2_ci, c(1,2), function(j) quantile(j, prob=0.025))
+F_hat2_ub <- apply(F_hat2_ci, c(1,2), function(j) quantile(j, prob=0.975))
+
 ### Figure 4 a) and b) 
 par(mfrow=c(1,2), mar=c(5,5.5,1,1))
-plot(0:31, c(0,F_hat1[ids41[1],]), type="s", ylim=c(0,0.035), col=grey(0.8), lwd=2, xlab="Days", ylab=bquote(hat(F)[death]),
+plot(0:31, c(0,F_hat1[ids41[1],]), type="s", ylim=c(0,0.06), col=rgb(116,178,092, maxColorValue = 255), lwd=2, xlab="Days", ylab=bquote(hat(F)[death]),
      cex.axis=1.5, cex.lab=1.5) # frailty = 0
-lines(0:31, c(0,F_hat1[ids42[1],]), type="s", col=grey(0.2), lwd=2) # frailty = 1
-legend("topleft", legend=c("frail", "not frail"), lwd=2, col=c(grey(0.2),grey(0.8)), bty="n", cex=1.2)
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat1_lb[ids41[1],]),each=2),rep(rev(F_hat1_ub[ids41[1],]),each=2)),
+        col =  adjustcolor(rgb(116,178,092, maxColorValue = 255), alpha.f = 0.30), border = NA)
+lines(0:31, c(0,F_hat1[ids42[1],]), type="s", col="cornflowerblue", lwd=2) # frailty = 1
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat1_lb[ids42[1],]),each=2),rep(rev(F_hat1_ub[ids42[1],]),each=2)),
+        col =  adjustcolor("cornflowerblue", alpha.f = 0.3), border = NA)
+legend("topleft", legend=c("frail", "not frail"), lwd=2, col=c("cornflowerblue", rgb(116,178,092, maxColorValue = 255)), bty="n", cex=1.2)
 
-plot(0:31, c(0,F_hat2[ids42[1],]), type="s", ylim=c(0,1), col=grey(0.2), lwd=2, xlab="Days", ylab=bquote(hat(F)[discharge]),
+
+plot(0:31, c(0,F_hat2[ids41[1],]), type="s", ylim=c(0,1), col="cornflowerblue", lwd=2, xlab="Days", ylab=bquote(hat(F)[discharge]),
      cex.axis=1.5, cex.lab=1.5) # frailty = 1
-lines(0:31, c(0,F_hat2[ids41[1],]), type="s", col=grey(0.8), lwd=2) # frailty = 0 
-legend("bottomright", legend=c("frail", "not frail"), lwd=2, col=c(grey(0.2),grey(0.8)), bty="n", cex=1.2)
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat2_lb[ids41[1],]),each=2),rep(rev(F_hat2_ub[ids41[1],]),each=2)),
+        col =  adjustcolor("cornflowerblue", alpha.f = 0.30), border = NA)
+lines(0:31, c(0,F_hat2[ids42[1],]), type="s", col=rgb(116,178,092, maxColorValue = 255), lwd=2) # frailty = 0 
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat2_lb[ids42[1],]),each=2),rep(rev(F_hat2_ub[ids42[1],]),each=2)),
+        col =  adjustcolor(rgb(116,178,092, maxColorValue = 255), alpha.f = 0.3), border = NA)
+legend("bottomright", legend=c("frail", "not frail"), lwd=2, col=c("cornflowerblue",rgb(116,178,092, maxColorValue = 255)), bty="n", cex=1.2)
+
 
 ### Figure 4 c) and d) 
 par(mfrow=c(1,2), mar=c(5,5.5,1,1))
-plot(0:31, c(0,F_hat1[ids41[1],]), type="s", ylim=c(0,0.035), col=grey(0.8), lwd=2, xlab="Days", ylab=bquote(hat(F)[death]),
+plot(0:31, c(0,F_hat1[ids41[1],]), type="s", ylim=c(0,0.035), col=rgb(116,178,092, maxColorValue = 255), lwd=2, xlab="Days", ylab=bquote(hat(F)[death]),
      cex.axis=1.5, cex.lab=1.5) # urgency = elective
-lines(0:31, c(0,F_hat1[ids43[1],]), type="s", col=grey(0.5), lwd=2) # urgency = urgent
-lines(0:31, c(0,F_hat1[ids44[1],]), type="s", col=grey(0.2), lwd=2) # urgency = emergency
-legend("topleft", legend=c("elective", "urgent", "emergency"), lwd=2, col=c(grey(0.8),grey(0.5),grey(0.2)), bty="n", cex=1.2)
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat1_lb[ids41[1],]),each=2),rep(rev(F_hat1_ub[ids41[1],]),each=2)),
+        col =  adjustcolor(rgb(116,178,092, maxColorValue = 255), alpha.f = 0.3), border = NA)
+lines(0:31, c(0,F_hat1[ids43[1],]), type="s", col=rgb(107,210,229, maxColorValue = 255), lwd=2) # urgency = urgent
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat1_lb[ids43[1],]),each=2),rep(rev(F_hat1_ub[ids43[1],]),each=2)),
+        col =  adjustcolor(rgb(107,210,229, maxColorValue = 255), alpha.f = 0.3), border = NA)
+lines(0:31, c(0,F_hat1[ids44[1],]), type="s", col="cornflowerblue", lwd=2) # urgency = emergency
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat1_lb[ids44[1],]),each=2),rep(rev(F_hat1_ub[ids44[1],]),each=2)),
+        col =  adjustcolor("cornflowerblue", alpha.f = 0.30), border = NA)
+legend("topleft", legend=c("elective", "urgent", "emergency"), lwd=2, col=c(rgb(116,178,092, maxColorValue = 255),rgb(107,210,229, maxColorValue = 255),"cornflowerblue"), bty="n", cex=1.2)
 
-plot(0:31, c(0,F_hat2[ids41[1],]), type="s", ylim=c(0,1), col=grey(0.8), lwd=2, xlab="Days", ylab=bquote(hat(F)[discharge]),
+
+par(mar=c(5,5.5,1,1))
+plot(0:31, c(0,F_hat2[ids41[1],]), type="s", ylim=c(0,1), col=rgb(116,178,092, maxColorValue = 255), lwd=2, xlab="Days", ylab=bquote(hat(F)[discharge]),
      cex.axis=1.5, cex.lab=1.5) # urgency = elective
-lines(0:31, c(0,F_hat2[ids43[1],]), type="s", col=grey(0.5), lwd=2) # urgency = urgent
-lines(0:31, c(0,F_hat2[ids44[1],]), type="s", col=grey(0.2), lwd=2) # urgency = emergency
-legend("bottomright", legend=c("elective", "urgent", "emergency"), lwd=2, col=c(grey(0.8),grey(0.5),grey(0.2)), bty="n", cex=1.2)
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat2_lb[ids41[1],]),each=2),rep(rev(F_hat2_ub[ids41[1],]),each=2)),
+        col =  adjustcolor(rgb(116,178,092, maxColorValue = 255), alpha.f = 0.3), border = NA)
+lines(0:31, c(0,F_hat2[ids43[1],]), type="s", col=rgb(107,210,229, maxColorValue = 255), lwd=2) # urgency = urgent
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat2_lb[ids43[1],]),each=2),rep(rev(F_hat2_ub[ids43[1],]),each=2)),
+        col =  adjustcolor(rgb(107,210,229, maxColorValue = 255), alpha.f = 0.3), border = NA)
+lines(0:31, c(0,F_hat2[ids44[1],]), type="s", col="cornflowerblue", lwd=2) # urgency = emergency
+polygon(c(0,rep(1:31,each=2),rep(31:1,each=2),0), c(rep(c(0,F_hat2_lb[ids44[1],]),each=2),rep(rev(F_hat2_ub[ids44[1],]),each=2)),
+        col =  adjustcolor("cornflowerblue", alpha.f = 0.30), border = NA)
+legend("bottomright", legend=c("elective", "urgent", "emergency"), lwd=2, col=c(rgb(116,178,092, maxColorValue = 255),rgb(107,210,229, maxColorValue = 255),"cornflowerblue"), bty="n", cex=1.2)
+
 
 #####
 
