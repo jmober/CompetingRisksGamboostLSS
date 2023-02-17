@@ -15,7 +15,8 @@ To execute the R-Code it is useful to load the RStudio project
 
 The repository contains the following folders: 
 - Application: R-Code of the application presented in Section 5 
-- Packages_Functions: Main R-packages as tar.gz and functions for model fitting 
+- - Packages_Functions: R-package DCRvalidation as tar.gz (not on CRAN) and 
+		                    functions for model fitting  
 - Simulation: R-Code of the simulation study presented in Section 6 
 #####
 
