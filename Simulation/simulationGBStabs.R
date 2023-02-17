@@ -49,6 +49,11 @@
 
 one_sim <- function(seed, n, k, b, noninf, mmax, B){
   
+  # (optional) install packages 
+  # install.packages("discSurv")
+  # install.packages("gamboostLSS")
+  # install.packages("VGAM")
+  
   # load packages
   library("discSurv")
   library("gamboostLSS")

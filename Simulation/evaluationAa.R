@@ -15,6 +15,8 @@
 # The R-Code provided can be used to reproduce Figure S1, Figure S2 and 
 # Table S3 of the supplementary material. 
 
+### (optional) install libraries
+# install.packages("ggplot2", "viridis")
 
 ### libraries
 library(ggplot2)

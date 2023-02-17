@@ -49,6 +49,13 @@
 
 one_sim <- function(seed, n, k, b, noninf, mmax, method){
   
+  # (optional) install packages 
+  # install.packages("discSurv")
+  # install.packages("gamboostLSS")
+  # install.packages("http://cran.r-project.org/src/contrib/Archive/MRSP/MRSP_0.4.3.tar.gz", repos = NULL, type="source")
+  # install.packages("VGAM")
+  # install.packages("MASS")
+  
   # load packages
   library("discSurv")
   library("gamboostLSS")
